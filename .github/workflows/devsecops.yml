@@ -1,0 +1,117 @@
+name: DevSecOps Pipeline
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  security-scan:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 1. Pobierz kod z repo
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # 2. Przygotuj Node.js (Juice Shop używa Node.js)
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+
+    # 3. Zainstaluj zależności aplikacji
+    - name: Install dependencies
+      run: |
+        echo "Installing Node.js dependencies..."
+        npm ci
+
+    # 4. SCA - Sprawdź podatne zależności
+    - name: SCA - npm audit (Dependency scan)
+      run: |
+        echo "Uruchamianie SCA (Software Composition Analysis)..."
+        echo "Sprawdzanie podatnych zależności..."
+        npm audit --audit-level=moderate || true
+        echo "Generowanie raportu JSON..."
+        npm audit --json > npm-audit-report.json || true
+        echo "SCA scan zakończony!"
+
+    # 5. Wyświetl wyniki SCA
+    - name: Display SCA results
+      run: |
+        echo "=== WYNIKI SCA ==="
+        if [ -f npm-audit-report.json ]; then
+          echo "Liczba znalezionych podatności:"
+          cat npm-audit-report.json | jq '.metadata.vulnerabilities // 0'
+          echo "High severity:"
+          cat npm-audit-report.json | jq '.metadata.vulnerabilities.high // 0'
+          echo "Critical severity:" 
+          cat npm-audit-report.json | jq '.metadata.vulnerabilities.critical // 0'
+        fi
+
+    # 6. Secrets Scan - Sprawdź czy nie ma sekretów w kodzie
+    - name: Secrets Scan - GitLeaks
+      uses: gitleaks/gitleaks-action@v2
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # 7. Zbuduj obraz Docker
+    - name: Build Docker image
+      run: |
+        echo "Budowanie obrazu Docker..."
+        docker build -t juice-shop-devsecops:latest .
+        echo "Obraz zbudowany pomyślnie!"
+        docker images | grep juice-shop-devsecops
+
+    # 8. Test czy obraz się uruchamia
+    - name: Test Docker image
+      run: |
+        echo "Testowanie czy aplikacja się uruchamia..."
+        docker run -d -p 3000:3000 --name test-juice juice-shop-devsecops:latest
+        echo "Czekanie 30 sekund na uruchomienie..."
+        sleep 30
+        echo "Testowanie HTTP response..."
+        curl -f http://localhost:3000 > /dev/null || exit 1
+        echo "Aplikacja działa poprawnie!"
+        docker stop test-juice
+        docker rm test-juice
+
+    # 9. Skan obrazu Docker z Trivy
+    - name: Container Security Scan - Trivy
+      uses: aquasecurity/trivy-action@master
+      with:
+        image-ref: 'juice-shop-devsecops:latest'
+        format: 'table'
+        severity: 'HIGH,CRITICAL'
+        exit-code: '0'  # Nie zatrzymuj pipeline'u przy lukach (na razie)
+
+    # 10. Podsumowanie
+    - name: Generate Security Summary
+      run: |
+        echo "## DevSecOps Pipeline - Wyniki Skanowania" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Wykonane testy:" >> $GITHUB_STEP_SUMMARY
+        echo "- **SCA (npm audit)** - Sprawdzenie podatnych zależności" >> $GITHUB_STEP_SUMMARY
+        echo "- **Secrets Scan (GitLeaks)** - Wykrywanie sekretów w kodzie" >> $GITHUB_STEP_SUMMARY
+        echo "- **Docker Build** - Budowanie obrazu kontenera" >> $GITHUB_STEP_SUMMARY
+        echo "- **Application Test** - Test działania aplikacji" >> $GITHUB_STEP_SUMMARY
+        echo "- **Container Scan (Trivy)** - Skanowanie obrazu Docker" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Znalezione podatności:" >> $GITHUB_STEP_SUMMARY
+        
+        if [ -f npm-audit-report.json ]; then
+          HIGH_VULNS=$(cat npm-audit-report.json | jq '.metadata.vulnerabilities.high // 0')
+          CRITICAL_VULNS=$(cat npm-audit-report.json | jq '.metadata.vulnerabilities.critical // 0')
+          echo "- **SCA**: $HIGH_VULNS podatności HIGH, $CRITICAL_VULNS podatności CRITICAL" >> $GITHUB_STEP_SUMMARY
+        fi
+        
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "### Następne kroki:" >> $GITHUB_STEP_SUMMARY
+        echo "1. Przeanalizuj znalezione podatności" >> $GITHUB_STEP_SUMMARY
+        echo "2. Napraw minimum 2-3 podatności HIGH/CRITICAL z każdego skanu" >> $GITHUB_STEP_SUMMARY
+        echo "3. Dodaj SAST (Semgrep) i DAST (OWASP ZAP)" >> $GITHUB_STEP_SUMMARY
+        echo "4. Skonfiguruj publikację do Docker Hub" >> $GITHUB_STEP_SUMMARY
+        
+        echo "Pipeline v1.0 zakończony!" >> $GITHUB_STEP_SUMMARY
