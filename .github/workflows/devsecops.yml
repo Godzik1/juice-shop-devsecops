@@ -25,7 +25,7 @@ jobs:
     - name: Install dependencies
       run: |
         echo "Installing Node.js dependencies..."
-        npm ci
+        npm install --production
 
     # 4. SCA - Sprawdź podatne zależności
     - name: SCA - npm audit (Dependency scan)
