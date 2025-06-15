@@ -93,15 +93,11 @@ jobs:
 
     # 10 DAST - OWASP ZAP Scan
     - name: DAST - OWASP ZAP Baseline Scan
-      run: |
-        echo "Uruchamianie DAST z OWASP ZAP..."
-        echo "Aplikacja już działa na localhost:3000"
-        docker run --rm --network host \
-          -v $(pwd):/zap/wrk/:rw \
-          owasp/zap2docker-stable zap-baseline.py \
-          -t http://localhost:3000 \
-          -r zap-report.html || true
-        echo "DAST scan zakończony!"
+      uses: zaproxy/action-baseline@v0.12.0
+      with:
+        target: 'http://localhost:3000'
+        rules_file_name: '.zap/rules.tsv'
+        cmd_options: '-a'
       continue-on-error: true
 
     # Zatrzymaj kontener po DAST
