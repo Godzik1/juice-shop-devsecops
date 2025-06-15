@@ -267,6 +267,24 @@ restoreOverwrittenFilesWithOriginals().then(() => {
   app.use('/ftp(?!/quarantine)/:file', servePublicFiles()) // vuln-code-snippet vuln-line directoryListingChallenge
   app.use('/ftp/quarantine/:file', serveQuarantineFiles()) // vuln-code-snippet neutral-line directoryListingChallenge
 
+  app.use('/ftp(?!/quarantine)/:file', servePublicFiles()) // vuln-code-snippet vuln-line directoryListingChallenge
+  app.use('/ftp/quarantine/:file', serveQuarantineFiles()) // vuln-code-snippet neutral-line directoryListingChallenge
+
+  // Fix DAST vulnerability: Full Path Disclosure in FTP 403 errors
+  app.use('/ftp', (req: Request, res: Response, next: NextFunction) => {
+    const originalSend = res.send
+    res.send = function(data: any) {
+      if (res.statusCode === 403) {
+        return originalSend.call(this, 'Access Denied')
+      }
+      return originalSend.call(this, data)
+    }
+    next()
+  })
+
+  app.use('/.well-known', serveIndexMiddleware, serveIndex('.well-known', { icons: true, view: 'details' }))
+
+
   app.use('/.well-known', serveIndexMiddleware, serveIndex('.well-known', { icons: true, view: 'details' }))
   app.use('/.well-known', express.static('.well-known'))
 
