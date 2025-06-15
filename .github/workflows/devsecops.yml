@@ -89,10 +89,29 @@ jobs:
         echo "Testowanie HTTP response..."
         curl -f http://localhost:3000 > /dev/null || exit 1
         echo "Aplikacja działa poprawnie!"
-        docker stop test-juice
-        docker rm test-juice
 
-    # 10. Skan obrazu Docker z Trivy
+
+    # 10 DAST - OWASP ZAP Scan
+    - name: DAST - OWASP ZAP Baseline Scan
+      run: |
+        echo "Uruchamianie DAST z OWASP ZAP..."
+        echo "Aplikacja już działa na localhost:3000"
+        docker run --rm --network host \
+          -v $(pwd):/zap/wrk/:rw \
+          owasp/zap2docker-stable zap-baseline.py \
+          -t http://localhost:3000 \
+          -r zap-report.html || true
+        echo "DAST scan zakończony!"
+      continue-on-error: true
+
+    # Zatrzymaj kontener po DAST
+    - name: Stop test container after DAST
+      run: |
+        docker stop test-juice || true
+        docker rm test-juice || true
+      if: always()
+
+    # 11. Skan obrazu Docker z Trivy
     - name: Container Security Scan - Trivy
       uses: aquasecurity/trivy-action@master
       with:
@@ -101,7 +120,7 @@ jobs:
         severity: 'HIGH,CRITICAL'
         exit-code: '0'  # Nie zatrzymuj pipeline'u przy lukach (na razie)
 
-    # 11. Podsumowanie
+    # 12. Podsumowanie
     - name: Generate Security Summary
       run: |
         echo "## DevSecOps Pipeline - Wyniki Skanowania" >> $GITHUB_STEP_SUMMARY
