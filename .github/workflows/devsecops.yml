@@ -58,7 +58,27 @@ jobs:
       continue-on-error: true  # Nie zatrzymuj pipeline przy błędach
 
 
-    # 7. Zbuduj obraz Docker
+    # 9. SAST - sekcja
+
+    - name: SAST - Semgrep
+      uses: semgrep/semgrep-action@v1
+      with:
+        config: >-
+          p/security-audit
+          p/secrets
+          p/javascript
+          p/typescript
+        generateSarif: "1"
+      continue-on-error: true
+
+    # Upload SARIF results to GitHub
+    - name: Upload SAST SARIF results
+      uses: github/codeql-action/upload-sarif@v3
+      with:
+        sarif_file: semgrep.sarif
+      if: always()
+
+    # 8. Zbuduj obraz Docker
     - name: Build Docker image
       run: |
         echo "Budowanie obrazu Docker..."
@@ -66,7 +86,7 @@ jobs:
         echo "Obraz zbudowany pomyślnie!"
         docker images | grep juice-shop-devsecops
 
-    # 8. Test czy obraz się uruchamia
+    # 9. Test czy obraz się uruchamia
     - name: Test Docker image
       run: |
         echo "Testowanie czy aplikacja się uruchamia..."
@@ -79,7 +99,7 @@ jobs:
         docker stop test-juice
         docker rm test-juice
 
-    # 9. Skan obrazu Docker z Trivy
+    # 10. Skan obrazu Docker z Trivy
     - name: Container Security Scan - Trivy
       uses: aquasecurity/trivy-action@master
       with:
@@ -88,7 +108,7 @@ jobs:
         severity: 'HIGH,CRITICAL'
         exit-code: '0'  # Nie zatrzymuj pipeline'u przy lukach (na razie)
 
-    # 10. Podsumowanie
+    # 11. Podsumowanie
     - name: Generate Security Summary
       run: |
         echo "## DevSecOps Pipeline - Wyniki Skanowania" >> $GITHUB_STEP_SUMMARY
